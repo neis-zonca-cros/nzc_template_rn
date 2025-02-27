@@ -1,0 +1,8 @@
+{
+  "name": "nzc_template_rn",
+  "version": "0.0.1",
+  "description": "React Native Template",
+  "repository": "git@github.com:neis-zonca-cros/nzc_template_rn.git",
+  "author": "NZC Developpment",
+  "license": "MIT"
+}

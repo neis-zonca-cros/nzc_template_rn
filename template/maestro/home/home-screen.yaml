@@ -1,0 +1,6 @@
+appId: com.nzc.boilerplate.dev
+---
+- launchApp
+
+- assertVisible:
+    id: details-button

@@ -1,0 +1,179 @@
+fastlane_require 'dotenv'
+
+before_all do
+  ENV["RCT_NO_LAUNCH_PACKAGER"] = "true"
+
+  #load global environment
+  Dotenv.overload '.env.global'
+end
+
+platform :ios do
+    desc "Build IPA"
+    lane :build do
+        # Increment version & build number
+        version_number = JSON.parse(open("../../package.json").read)["version"]
+        build_number = Time.now.strftime("%y%m%d%H%M")
+
+        puts "🧹 Clear Derived Data 🧹"
+        clear_derived_data(derived_data_path: "DerivedData/")
+
+        puts "Increment main target build number and version in plist" 
+        increment_version_number_in_plist(
+            target: "boilerplate",
+            version_number: version_number,
+            xcodeproj: ENV["XCODEPROJ_PATH"]
+        )
+
+        increment_build_number_in_plist(
+            target: "boilerplate",
+            build_number: build_number,
+            xcodeproj: ENV["XCODEPROJ_PATH"]
+        )
+
+        # Install certificate if it is not on the runner
+        puts "📥 - Import certificate  -  📥"
+        import_certificate(
+            certificate_path: ENV["CERTIFICATE_PATH"],
+            certificate_password: ENV['ENVIRONMENT'] == 'production' ? ENV["CERTIFICATE_PASSWORD_PRODUCTION"] : ENV["CERTIFICATE_PASSWORD"],
+            keychain_name: ENV["KEYCHAIN_LOGIN"],
+            keychain_password: ENV["KEYCHAIN_PASSWORD"]
+        )
+
+        # Download provisioning profile
+        api_key = generate_api_key()
+        puts "📥 - Download app provisioning profile -  📥"
+        sigh(
+            readonly: true,
+            app_identifier: ENV["APP_ID"],
+            api_key: api_key,
+            team_id: ENV["TEAM_ID_APPLE"],
+            provisioning_name: ENV["PROVISIONING_NAME"],
+        )
+
+        puts "Update Project provisioning"
+        update_project_provisioning(
+            xcodeproj: ENV["XCODEPROJ_PATH"],
+            build_configuration: ENV["CONFIGURATION"],
+            code_signing_identity: ENV["CODE_SIGNING_IDENTITY"],
+            target_filter: ENV["TARGET"]
+        )
+
+        puts "🧹 Clear Derived Data 🧹"
+        clear_derived_data(derived_data_path: "DerivedData/")
+
+        puts "Build"
+        gym(
+            clean: true,
+            scheme: ENV["SCHEME"],
+            output_directory: ENV["IPA_OUTPUT_DIRECTORY"],
+            output_name: ENV["IPA_NAME"],
+            codesigning_identity: ENV["CODE_SIGNING_IDENTITY"],
+            workspace: ENV["WORKSPACE_PATH"],
+            export_method: ENV["EXPORT_METHOD"],
+            configuration: ENV["CONFIGURATION"]
+        )
+
+    end
+
+    lane :generate_api_key do
+        app_store_connect_api_key(
+            key_id: ENV["API_KEY_ID"],
+            issuer_id: ENV["ISSUER_ID"],
+            key_filepath: ENV["API_KEY_PATH"],
+            duration: 1200, # optional
+            in_house: true, # optional but may be required if using match/sigh
+        )
+    end
+
+    desc "🚀 - Upload - 🚀"
+    lane :deploy_to_store do |options|
+        if (options[:store] == "public")
+            puts "🚀 Deploy to AppStore 🚀"
+            upload_on_Appstore()
+        elsif (options[:store] == "nzc")
+            puts "🚀 Deploy to Firebase 🚀"
+            download_url = upload_on_private_store(
+                destinations: ENV["TESTER_GROUPS"]
+            )
+
+        elsif (options[:store] == "privateClient")
+            upload_on_private_store(
+                destinations: ENV["TESTER_CLIENT_GROUPS"]
+            )
+        else
+            UI.user_error!("🚫 Wrong store selected 🚫\n Use 'public', 'nzc', 'privateClient'")
+        end
+    end
+
+    desc "🚀 - Upload On Private Store - 🚀"
+    lane :upload_on_private_store do |options|
+        result = firebase_app_distribution(
+            service_credentials_file: ENV['SERVICE_ACCOUNT_FILE_PATH'],
+            app: ENV['FIREBASE_APP_ID_IOS'],
+            ipa_path: "#{ENV["IPA_OUTPUT_DIRECTORY"]}#{ENV["IPA_NAME"]}.ipa",
+            release_notes: last_git_commit[:message],
+            groups: options[:destinations]
+        )
+        puts "✅ Firebase App Distribution result: #{result}"
+        download_url = result[:testingUri]
+    end
+end
+
+platform :android do
+    desc "Build app & packaging apk"
+    lane :build do
+        # Increment version & build number
+        version_number = JSON.parse(open("../../package.json").read)["version"]
+        dateTime = Time.now.strftime("%y%j%H%M")
+        build_number = dateTime.to_i
+        gradle(
+            task: "clean",
+            gradle_path: "../android/gradlew",
+            project_dir: "../android"
+        )
+
+        gradle(
+            task: "assemble",
+            build_type: "release",
+            properties: {
+              "versionCode" => build_number,
+              "versionName" => version_number,
+              "keystore_password" => ENV["KEYSTORE_PASSWORD"]
+            },
+            gradle_path: "../android/gradlew",
+            project_dir: "../android"
+        )
+    end
+
+    desc "🔥 - Upload On AppCenter - 🔥"
+    lane :deploy_to_store do |options|
+        if (options[:store] == "public")
+            puts "🚀 Deploy to AppStore 🚀"
+            upload_on_Appstore()
+        elsif (options[:store] == "nzc")
+            puts "🚀 Deploy to Firebase 🚀"
+            download_url = upload_on_private_store(
+                destinations: ENV["TESTER_GROUPS"]
+            )
+        elsif (options[:store] == "privateClient")
+            upload_on_private_store(
+                destinations: ENV["TESTER_CLIENT_GROUPS"]
+            )
+        else
+            UI.user_error!("🚫 Wrong store selected 🚫\n Use 'public', 'nzc', 'privateClient'")
+        end
+    end
+
+    desc "🔥 - Upload On Private Store - 🔥"
+    lane :upload_on_private_store do |options|
+        result = firebase_app_distribution(
+            app: ENV['FIREBASE_APP_ID_ANDROID'],
+            android_artifact_type: "APK",
+            android_artifact_path: ENV['APK_PATH'] + ENV['APK_NAME'],
+            service_credentials_file: ENV['SERVICE_ACCOUNT_FILE_PATH'],
+            groups: options[:destinations]
+        )
+        puts "✅ Firebase App Distribution result: #{result}"
+        download_url = result[:testingUri]
+    end
+end

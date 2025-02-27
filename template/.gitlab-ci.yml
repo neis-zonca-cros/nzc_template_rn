@@ -1,0 +1,227 @@
+stages:
+  - 👮quality
+  - 👷build
+  - 🚀deploy-nzc
+  - 🚀deploy-client
+
+################################################################
+# 0) QUALITY                                                   #
+################################################################
+
+.quality: &quality
+  stage: 👮quality
+  before_script:
+    - nvm install
+    - nvm use
+    - yarn
+  tags:
+    - React-Native
+  allow_failure: false
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^develop$/'
+
+typescript:
+  <<: *quality
+  script:
+    - yarn tsc
+
+prettier:
+  <<: *quality
+  script:
+    - yarn prettier
+
+eslint:
+  <<: *quality
+  script:
+    - yarn lint
+
+jest:
+  <<: *quality
+  script:
+    - yarn test --coverage
+
+################################################################
+# 1) BUILD                                                     #
+################################################################
+# Template
+.buildAndroid: &buildAndroid
+  stage: 👷build
+  before_script:
+    - nvm install
+    - nvm use
+    - yarn
+    - jabba use
+    - cd ci/
+    - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+    - bundle install
+  script:
+    - bundle exec fastlane android build --env ${BUILD_ENV}
+  tags:
+    - React-Native
+  allow_failure: true
+  artifacts:
+    paths:
+      - android/app/build/outputs/apk/${BUILD_ENV}
+    expire_in: 2 weeks
+
+.buildiOS: &buildiOS
+  stage: 👷build
+  before_script:
+    - nvm install
+    - nvm use
+    - yarn
+    - cd ci/
+    - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+    - bundle install
+    - bundle exec "cd ../../ios && pod install --repo-update"
+  script:
+    - bundle exec fastlane ios build --env ${BUILD_ENV}
+  tags:
+    - xcode16
+  allow_failure: true
+  artifacts:
+    paths:
+      - ios/build/ipa/
+    expire_in: 2 weeks
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
+    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^develop$/'
+
+# Jobs
+🛠build:ios:dev:
+  <<: *buildiOS
+  variables:
+    BUILD_ENV: dev
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
+    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+
+🛠build:ios:production:
+  <<: *buildiOS
+  variables:
+    BUILD_ENV: production
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
+    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+
+🛠build:android:dev:
+  <<: *buildAndroid
+  variables:
+    BUILD_ENV: dev
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
+    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+
+🛠build:android:production:
+  <<: *buildAndroid
+  variables:
+    BUILD_ENV: production
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
+    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+
+################################################################
+# 2) DEPLOY NZC                                               #
+################################################################
+
+# Templates
+.deploy: &deploy
+  before_script:
+    - cd ci/
+    - bundle install
+    - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+  script:
+    - bundle exec fastlane ${BUILD_PLATFORM} deploy_to_store store:${DEPLOY_STORE} --env ${BUILD_ENV}
+  tags:
+    - React-Native
+
+# Jobs
+🚀deploy-nzc:ios:dev:
+  <<: *deploy
+  stage: 🚀deploy-nzc
+  variables:
+    BUILD_PLATFORM: ios
+    BUILD_ENV: dev
+    DEPLOY_STORE: nzc
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
+    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+  dependencies:
+    - 🛠build:ios:dev
+
+🚀deploy-nzc:android:dev:
+  <<: *deploy
+  stage: 🚀deploy-nzc
+  variables:
+    BUILD_PLATFORM: android
+    BUILD_ENV: dev
+    DEPLOY_STORE: nzc
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
+    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+  dependencies:
+    - 🛠build:android:dev
+
+################################################################
+# 3) DEPLOY CLIENT                                             #
+################################################################
+
+🚀deploy-client:ios:dev:
+  <<: *deploy
+  stage: 🚀deploy-client
+  variables:
+    BUILD_PLATFORM: ios
+    BUILD_ENV: dev
+    DEPLOY_STORE: nzc
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
+    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+  dependencies:
+    - 🛠build:ios:dev
+
+🚀deploy-client:android:dev:
+  <<: *deploy
+  stage: 🚀deploy-client
+  variables:
+    BUILD_PLATFORM: android
+    BUILD_ENV: dev
+    DEPLOY_STORE: privateClient
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
+    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+  dependencies:
+    - 🛠build:android:dev
+  when: manual
+
+🚀deploy-client:ios:production:
+  <<: *deploy
+  stage: 🚀deploy-client
+  variables:
+    BUILD_PLATFORM: ios
+    BUILD_ENV: production
+    DEPLOY_STORE: nzc
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
+    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+  dependencies:
+    - 🛠build:ios:dev
+
+🚀deploy-client:android:production:
+  <<: *deploy
+  stage: 🚀deploy-client
+  variables:
+    BUILD_PLATFORM: android
+    BUILD_ENV: production
+    DEPLOY_STORE: privateClient
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
+    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+  dependencies:
+    - 🛠build:android:production
+  when: manual
