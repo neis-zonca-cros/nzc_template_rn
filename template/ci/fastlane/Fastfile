@@ -34,7 +34,7 @@ platform :ios do
         puts "📥 - Import certificate  -  📥"
         import_certificate(
             certificate_path: ENV["CERTIFICATE_PATH"],
-            certificate_password: ENV['ENVIRONMENT'] == 'production' ? ENV["CERTIFICATE_PASSWORD_PRODUCTION"] : ENV["CERTIFICATE_PASSWORD"],
+            certificate_password: ENV["CERTIFICATE_PASSWORD"],
             keychain_name: ENV["KEYCHAIN_LOGIN"],
             keychain_password: ENV["KEYCHAIN_PASSWORD"]
         )
@@ -48,6 +48,7 @@ platform :ios do
             api_key: api_key,
             team_id: ENV["TEAM_ID_APPLE"],
             provisioning_name: ENV["PROVISIONING_NAME"],
+            adhoc: true,
         )
 
         puts "Update Project provisioning"
@@ -81,7 +82,7 @@ platform :ios do
             issuer_id: ENV["ISSUER_ID"],
             key_filepath: ENV["API_KEY_PATH"],
             duration: 1200, # optional
-            in_house: true, # optional but may be required if using match/sigh
+            in_house: false, # optional but may be required if using match/sigh
         )
     end
 
