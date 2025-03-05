@@ -9,13 +9,12 @@ Run this command in your favorite terminal :
 
 `npx @react-native-community/cli@latest init MyApp --template https://github.com/neis-zonca-cros/nzc_template_rn.git`
 
-You can run your app like this :
+## 🔑 Getting Started & Dependency Updates
 
-- `rbenv install 3.2.5`
-- `bundle install`
-- `nvm install` to install the correct node version
-- `nvm use` to use the correct node version
-- `yarn` to install the packages
-- `yarn start` to start the metro bundler
-- `yarn pods` & `yarn ios:dev:debug` to run on iOS
-- `jabba use` & `yarn android:dev:debug` to run on Android
+1. Run `nvm install`
+2. Run `rbenv install` (or install Ruby version specified in `.ruby-version` if you don't have rbenv)
+3. Run `cd ci`
+4. Run `yarn`
+5. Run `bundle install`
+6. Run `bundle exec "cd ../ios/ && pod install --repo-update"`
+7. Run `yarn ios:dev:debug` or `yarn android:dev:debug`

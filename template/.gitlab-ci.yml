@@ -11,11 +11,13 @@ stages:
 .quality: &quality
   stage: 👮quality
   before_script:
+    - export NVM_DIR="$HOME/.nvm"
+    - if [ -s "$NVM_DIR/nvm.sh" ]; then source "$NVM_DIR/nvm.sh"; fi
     - nvm install
     - nvm use
     - yarn
   tags:
-    - React-Native
+    - mac-home
   allow_failure: false
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^develop$/'
@@ -47,17 +49,31 @@ jest:
 .buildAndroid: &buildAndroid
   stage: 👷build
   before_script:
+    - export LANG=en_US.UTF-8
+    - export LC_ALL=en_US.UTF-8
+    - cat $ENV_FILE > .env.${BUILD_ENV}
+    - export NVM_DIR="$HOME/.nvm"
+    - if [ -s "$NVM_DIR/nvm.sh" ]; then source "$NVM_DIR/nvm.sh"; fi
     - nvm install
     - nvm use
+    - export PATH=$PATH:/usr/local/bin
+    - yarn --version 
+    - export PATH="$HOME/.rbenv/shims:$HOME/.rbenv/bin:$PATH"
+    - eval "$(rbenv init -)" 
+    - bundle --version
+    - export PATH="$HOME/.jabba/jabba/bin:$PATH"
+    - jabba --version
     - yarn
     - jabba use
     - cd ci/
     - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
     - bundle install
+    - export ANDROID_HOME="$HOME/Library/Android/sdk"
+    - export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools:$PATH"
+  tags:
+    - mac-home
   script:
     - bundle exec fastlane android build --env ${BUILD_ENV}
-  tags:
-    - React-Native
   allow_failure: true
   artifacts:
     paths:
@@ -67,27 +83,32 @@ jest:
 .buildiOS: &buildiOS
   stage: 👷build
   before_script:
+    - export LANG=en_US.UTF-8
+    - export LC_ALL=en_US.UTF-8
+    - cat $ENV_FILE > .env.${BUILD_ENV}
+    - export NVM_DIR="$HOME/.nvm"
+    - if [ -s "$NVM_DIR/nvm.sh" ]; then source "$NVM_DIR/nvm.sh"; fi
     - nvm install
     - nvm use
+    - export PATH=$PATH:/usr/local/bin
+    - yarn --version 
+    - export PATH="$HOME/.rbenv/shims:$HOME/.rbenv/bin:$PATH"
+    - eval "$(rbenv init -)" 
+    - bundle --version
     - yarn
     - cd ci/
     - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
     - bundle install
-    - bundle exec "cd ../../ios && pod install --repo-update"
+    - bundle exec "cd ../ios && pod install --repo-update"
+  tags:
+    - mac-home
   script:
     - bundle exec fastlane ios build --env ${BUILD_ENV}
-  tags:
-    - xcode16
   allow_failure: true
   artifacts:
     paths:
       - ios/build/ipa/
     expire_in: 2 weeks
-  rules:
-    - if: $CI_COMMIT_BRANCH == "develop"
-    - if: $CI_COMMIT_BRANCH =~ /^release.*$/
-    - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^develop$/'
 
 # Jobs
 🛠build:ios:dev:
@@ -98,6 +119,7 @@ jest:
     - if: $CI_COMMIT_BRANCH == "develop"
     - if: $CI_COMMIT_BRANCH =~ /^release.*$/
     - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^develop$/'
 
 🛠build:ios:production:
   <<: *buildiOS
@@ -115,6 +137,7 @@ jest:
     - if: $CI_COMMIT_BRANCH == "develop"
     - if: $CI_COMMIT_BRANCH =~ /^release.*$/
     - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^develop$/'
 
 🛠build:android:production:
   <<: *buildAndroid
@@ -131,13 +154,17 @@ jest:
 # Templates
 .deploy: &deploy
   before_script:
+    - export LANG=en_US.UTF-8
+    - export LC_ALL=en_US.UTF-8
+    - export PATH="$HOME/.rbenv/shims:$HOME/.rbenv/bin:$PATH"
+    - eval "$(rbenv init -)" 
     - cd ci/
     - bundle install
     - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
   script:
     - bundle exec fastlane ${BUILD_PLATFORM} deploy_to_store store:${DEPLOY_STORE} --env ${BUILD_ENV}
   tags:
-    - React-Native
+    - mac-home
 
 # Jobs
 🚀deploy-nzc:ios:dev:
@@ -151,6 +178,7 @@ jest:
     - if: $CI_COMMIT_BRANCH == "develop"
     - if: $CI_COMMIT_BRANCH =~ /^release.*$/
     - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^develop$/'
   dependencies:
     - 🛠build:ios:dev
 
@@ -165,6 +193,7 @@ jest:
     - if: $CI_COMMIT_BRANCH == "develop"
     - if: $CI_COMMIT_BRANCH =~ /^release.*$/
     - if: $CI_COMMIT_BRANCH =~ /^hotfix.*$/
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^develop$/'
   dependencies:
     - 🛠build:android:dev
 
